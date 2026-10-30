@@ -1,0 +1,4 @@
+bert-ner-baseline/
+.ipynb_checkpoints/
+__pycache__/
+.DS_Store
