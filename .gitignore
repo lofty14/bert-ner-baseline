@@ -2,3 +2,13 @@ bert-ner-baseline/
 .ipynb_checkpoints/
 __pycache__/
 .DS_Store
+
+# Unified pipeline outputs / caches
+.venv/
+data/
+runs/
+biobert-ner/
+ner_baseline_runs/
+checkpoint-*/
+*.safetensors
+*.bin
