@@ -137,12 +137,43 @@ test evaluated with the **last** epoch's weights (no dev-based selection), seqev
 | BERT-base-cased | `baseline.ipynb` | 0.826 | 0.881 | 0.8528 | 0.984 |
 | BioBERT v1.1 | `biobert.ipynb` | – | – | 0.8681 | – |
 
-### Unified protocol (dev-selected, seeds 1/2/3) — to be filled
+### Unified protocol (dev-selected, seeds 1/2/3)
 
-Paste the output of `python -m ner.aggregate runs/` here.
+Run on Colab (Tesla T4, FP32, transformers 5.22.0) with `colab_sweep.ipynb`, old-notebook hyper-parameters
+(lr 2e-5, batch 8, 3 epochs, no warmup); for each seed the epoch with the best dev F1 (default mode) is evaluated on test.
 
-| model | dev F1 (default) | test P (default) | test R (default) | test F1 (default) | test F1 (strict) |
-|---|---:|---:|---:|---:|---:|
-| bert | TBD | TBD | TBD | TBD | TBD |
-| biobert (v1.2) | TBD | TBD | TBD | TBD | TBD |
-| pubmedbert | TBD | TBD | TBD | TBD | TBD |
+**Summary (test, mean ± std over 3 seeds, %)**
+
+| model | P (strict) | R (strict) | F1 (strict) | F1 (default) |
+|---|---:|---:|---:|---:|
+| bert | 83.40 ± 0.57 | 87.01 ± 0.84 | 85.17 ± 0.42 | 84.21 ± 0.42 |
+| biobert (v1.2) | 86.16 ± 0.95 | 87.47 ± 2.69 | 86.79 ± 1.32 | 85.95 ± 1.35 |
+| pubmedbert | 86.55 ± 0.49 | 89.10 ± 0.52 | **87.80 ± 0.25** | 87.28 ± 0.50 |
+
+Full `ner.aggregate` output:
+
+Scores are percentages, mean ± sample std over seeds. `default` = seqeval default mode, `strict` = mode='strict', scheme=IOB2.
+
+#### dev
+
+| model | n seeds | P (default) | R (default) | F1 (default) | P (strict) | R (strict) | F1 (strict) | token acc |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| bert | 3 (1,2,3) | 81.66 ± 1.29 | 87.59 ± 0.65 | 84.51 ± 0.77 | 84.08 ± 0.68 | 87.42 ± 0.58 | 85.71 ± 0.23 | 98.63 ± 0.01 |
+| biobert | 3 (1,2,3) | 83.29 ± 0.91 | 88.35 ± 0.90 | 85.74 ± 0.12 | 86.03 ± 1.47 | 87.63 ± 1.41 | 86.81 ± 0.12 | 98.74 ± 0.05 |
+| pubmedbert | 3 (1,2,3) | 86.05 ± 1.51 | 88.69 ± 0.22 | 87.35 ± 0.87 | 87.36 ± 1.09 | 88.61 ± 0.26 | 87.98 ± 0.66 | 98.78 ± 0.05 |
+
+#### test
+
+| model | n seeds | P (default) | R (default) | F1 (default) | P (strict) | R (strict) | F1 (strict) | token acc |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| bert | 3 (1,2,3) | 81.08 ± 0.79 | 87.60 ± 0.89 | 84.21 ± 0.42 | 83.40 ± 0.57 | 87.01 ± 0.84 | 85.17 ± 0.42 | 98.25 ± 0.03 |
+| biobert | 3 (1,2,3) | 83.43 ± 0.88 | 88.65 ± 2.11 | 85.95 ± 1.35 | 86.16 ± 0.95 | 87.47 ± 2.69 | 86.79 ± 1.32 | 98.41 ± 0.18 |
+| pubmedbert | 3 (1,2,3) | 85.19 ± 0.35 | 89.48 ± 0.79 | 87.28 ± 0.50 | 86.55 ± 0.49 | 89.10 ± 0.52 | 87.80 ± 0.25 | 98.56 ± 0.05 |
+
+#### model selection
+
+| model | best dev epoch per seed |
+|---|---|
+| bert | s1:3, s2:2, s3:2 |
+| biobert | s1:2, s2:1, s3:2 |
+| pubmedbert | s1:3, s2:3, s3:2 |
