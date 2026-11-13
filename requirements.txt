@@ -1,0 +1,14 @@
+# Versions smoke-tested locally (macOS arm64, Python 3.12.14, Apple MPS) on 2026-11-13.
+# seqeval 1.2.2 is an sdist with a legacy setup.py; install with:
+#   pip install --use-pep517 -r requirements.txt
+torch==2.13.0
+transformers==5.22.0
+tokenizers==0.23.3
+huggingface_hub==2.4.0
+safetensors==0.8.0
+accelerate==1.15.0
+seqeval==1.2.2
+scikit-learn==1.9.1
+numpy==2.5.3
+# Optional, only for `python audit_ncbi_splits.py` without --no-hf (HF vs CoNLL comparison):
+# datasets
