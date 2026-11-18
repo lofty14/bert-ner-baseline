@@ -11,6 +11,14 @@ ner/                        unified experiment framework
   train.py                  one model x one seed  -> runs/<model>/seed<k>/
   sweep.py                  many models x seeds, then aggregate
   aggregate.py              mean ± std markdown tables from runs/**/metrics.json
+  dapt_corpus.py            unlabelled PubMed corpus for DAPT + NCBI Disease overlap removal
+  dapt.py                   continued masked-LM pre-training -> runs_dapt/<name>/
+  compare.py                paired per-seed comparison of two run labels
+  error_analysis.py         entity-level TP / FP / FN breakdown and stable differences of two labels
+  plot_dapt.py              DAPT figures -> dapt/figs/ (needs matplotlib)
+dapt/pmids.txt              PMID list of the DAPT corpus (year-balanced, shuffled)
+dapt/figs/                  DAPT figures used in the results below
+colab_dapt.ipynb            Colab: corpus, DAPT, both fine-tuning arms, compare
 baseline.ipynb              original BERT notebook (kept as is)
 biobert.ipynb               original BioBERT v1.1 notebook (kept as is)
 pubmedbert_baseline.ipynb   original PubMedBERT/BioBERT v1.2 notebook (kept as is)
@@ -143,6 +151,160 @@ without it are skipped and listed), each with strict and default scores.
 Training is FP32 unless `--precision` says otherwise (a Colab T4 has no native bf16, so `--precision bf16`
 aborts there). If Colab's torch is too old for
 transformers 5.22, either upgrade torch or try transformers 4.57.x (untested, see above).
+
+## Domain adaptation (continued MLM pre-training)
+
+Fixed starting model `bert` (bert-base-cased), two arms with identical NER data, `ner.train` settings,
+seeds (1/2/3), FP32 training and strict-F1 dev selection:
+
+* **direct**: `ner.train --model bert` (label `bert`);
+* **DAPT**: continue masked-LM pre-training of the same checkpoint on unlabelled PubMed abstracts
+  (`ner.dapt`), then `ner.train --model bert --init_from <dapt>/model` (label `bert+dapt`).
+
+```bash
+python -m ner.dapt_corpus search                    # one-off; result committed as dapt/pmids.txt
+python -m ner.dapt_corpus build --limit 30000       # -> data/dapt/corpus_{train,valid}.txt, audit.json
+python -m ner.dapt_corpus positive_control          # the text-overlap pass must fire on known overlap
+python -m ner.dapt --model bert --max_steps 10000   # -> runs_dapt/bert_dapt/{model/,dapt.json}
+#   runs reported below: --epochs 1 --eval_steps 200 --output_dir runs_dapt/bert_dapt_1ep
+#                        --epochs 3 --eval_steps 400 --output_dir runs_dapt/bert_dapt_3ep
+#   options: --epochs (if no --max_steps) --batch_size 32 --grad_accum 1 --lr 5e-5 --warmup_ratio 0.06
+#            --weight_decay 0.01 --max_length 256 --mlm_probability 0.15 --precision fp32 --seed 42
+#            --eval_steps 500 --logging_steps 50 --limit_docs N --output_dir
+python -m ner.dapt --model bert --max_steps 0 --output_dir runs_dapt/bert_dapt0   # zero-step control
+python -m ner.sweep --models bert --seeds 1 2 3                                          # direct arm
+python -m ner.sweep --models bert --seeds 1 2 3 --init_from runs_dapt/bert_dapt/model    # -> runs/bert+dapt/
+python -m ner.aggregate runs/                       # bert+dapt is listed right after bert
+python -m ner.compare runs/ --a bert --b bert+dapt  # per-seed deltas, mean ± std, #seeds > 0
+# runs reported below use --runs_dir runs/v2 and --label bert+dapt1ep / bert+dapt3ep, e.g.
+#   python -m ner.sweep --models bert --seeds 1 2 3 --runs_dir runs/v2 \
+#       --init_from runs_dapt/bert_dapt_3ep/model --label bert+dapt3ep
+python -m ner.error_analysis runs/v2 --a bert --b bert+dapt3ep --split test --out runs/v2/error_analysis_dapt3ep.md
+python -m ner.plot_dapt --runs_dir runs/v2 --dapt_dir runs_dapt --out_dir dapt/figs   # needs matplotlib
+```
+
+`colab_dapt.ipynb` runs the whole pipeline on Colab (corpus, a 200-step timing probe, DAPT, optional
+zero-step control, both sweeps, aggregate, compare) with all outputs on Google Drive.
+
+**Corpus.** `search` asks NCBI E-utilities (esearch, only `tool=ncbi-ner-dapt`, no e-mail or API key,
+≤ 3 requests/s with retries) for
+`diseases category[MeSH Terms] AND hasabstract[text] AND english[Language] AND <yyyy/mm>[pdat]`
+for each month of the publication years 1990–2012 and takes the same number of PMIDs per year
+(30000 / 23: the first 8 years get 1305, the others 1304), spread evenly over the months. esearch only
+returns the first 10,000 hits of a query, in "most recently added" order, so taking the first k of a whole
+year would mostly pick records added to PubMed long after publication; instead each month's quota is drawn
+with a fixed seed from the first 9999 hits of that month (records with a year-only date fall into January;
+a PMID already taken by another window is skipped). The union is shuffled with a fixed seed.
+`dapt/pmids.txt` is committed (`dapt/pmids_meta.json` records query, per-year counts and date), so the first
+N lines are a deterministic, year-balanced subset even though PubMed keeps changing. `build` fetches title + abstract (`Article/Abstract/AbstractText`, all
+sections joined; records with only an `OtherAbstract` or none count as "without abstract") with efetch
+(POST, 200 per request, cached in `data/dapt/raw.jsonl`).
+
+**Overlap removal.** (1) every document whose PMID is in the original NCBI Disease train, dev or test
+corpus (PubTator files from spyysalo/ncbi-disease `original-data/`, cached in
+`data/ncbi_disease/original/`) is removed; (2) every dev/test sentence (CoNLL tokens joined) is
+normalised (lower case, all non-alphanumeric characters removed) and the ones with ≥ 40 characters are
+used as fingerprints; a corpus document whose normalised title + abstract contains any fingerprint is
+removed entirely. About 2% of the remaining documents (hash of the PMID) form the validation corpus.
+`positive_control` runs pass 2 on the original dev/test documents and on the PubMed (efetch) versions
+of test documents under fake PMIDs; both must be detected.
+
+**Checks.** `ner.dapt` reloads the saved model with `AutoModelForMaskedLM.from_pretrained` and aborts
+unless every tensor equals the in-memory model and the loading report is empty (transformers 5.x saves
+BERT LayerNorm weights as `gamma`/`beta`, see above). `ner.train --init_from` aborts unless only the
+classifier head is newly initialised, every encoder tensor equals the DAPT checkpoint and the encoder
+hash in `dapt.json`, and the encoder differs from the Hugging Face checkpoint if DAPT trained > 0 steps
+(is identical for 0 steps). These verification loads run between an RNG snapshot and restore.
+Validation windows are masked once with a fixed seed, so validation losses are comparable over time.
+
+**Outputs.** `data/dapt/audit.json`: query, requested / retrieved PMIDs, documents without abstract,
+counts and PMIDs removed by each pass (pass 1 per split; pass 2 with the matching dev/test sentences),
+final document and word counts, SHA-256 of both corpus files. `runs_dapt/<name>/dapt.json`: starting
+checkpoint and revision, corpus hashes, documents / windows, all hyper-parameters, steps, training and
+validation loss history, initial and final validation loss and perplexity, encoder hash, device,
+versions, timings. NER `metrics.json` gains `base_model` and `init_from` (path, corpus hashes, steps,
+validation losses, check results); `model` is the label. Without `--init_from` both runs are
+unchanged except for `"base_model"`, `"init_from": null` and `config.init_from/label`.
+
+**Results (v2 protocol).** All numbers in this subsection come from the v2 protocol: FP32, the epoch with
+the best dev strict F1 is evaluated on test, Apple MPS (macOS arm64), NER seeds 1/2/3, other `ner.train`
+settings as in the v2 runs (lr 2e-5, batch 8, 3 epochs, no warmup). They are **not comparable** with the
+v1 table further down (bert 85.17 ± 0.42 there), which used a different selection metric, mixed
+precision and a T4 GPU. Sources (copies of the git-ignored run outputs, kept in the repository under `dapt/results/`): `results.md`,
+`compare_dapt1ep.md`, `compare_dapt3ep.md`, `error_analysis_dapt{1,3}ep.md`, `corpus_audit.json` (the overlap
+audit, `data/dapt/audit.json`), `*.dapt.json` and `metrics/*.json` (one per NER run, including the two controls).
+
+*Corpus actually used.* 30,000 PMIDs requested and retrieved; 115 had no abstract and were dropped.
+The overlap pass by PMID removed 2 documents, both from the NCBI Disease training corpus (0 from dev,
+0 from test; the original corpora contain 592 / 100 / 100 unique PMIDs, the training file lists one of
+them, PMID 8528200, twice, so 793 entries and 792 unique documents). The text-fingerprint pass used
+1,771 dev/test sentence fingerprints and matched none (91 dev/test sentences are shorter than 40
+characters and were not fingerprinted). Final corpus: 29,257 training and 626 validation documents;
+the training part has about 5.9 million words (5,903,866), 9,767,545 tokens and 52,216 windows of
+256 tokens (validation: 125,525 words, 1,122 windows). DAPT: batch 32, learning rate 5e-5, warmup
+ratio 0.06, mask probability 0.15, seed 42; 1 epoch = 1,632 steps, 3 epochs = 4,896 steps.
+
+*Masked-LM.* Validation perplexity goes from 6.86 (loss 1.925) to 3.70 after 1 epoch and 3.35 after
+3 epochs.
+
+![Validation MLM loss during DAPT](dapt/figs/mlm_valid_loss.png)
+
+*NER, mean ± sample std over seeds 1/2/3, strict IOB2, %.*
+
+| model | dev P | dev R | dev F1 | test P | test R | test F1 |
+|---|---:|---:|---:|---:|---:|---:|
+| bert (direct) | 83.60 ± 0.90 | 87.00 ± 0.48 | 85.26 ± 0.56 | 84.26 ± 0.32 | 86.63 ± 0.87 | 85.43 ± 0.51 |
+| bert+dapt1ep | 82.06 ± 0.76 | 86.57 ± 0.07 | 84.26 ± 0.36 | 83.58 ± 0.82 | 86.91 ± 0.64 | 85.21 ± 0.68 |
+| bert+dapt3ep | 82.13 ± 0.84 | 86.79 ± 0.22 | 84.39 ± 0.38 | 83.22 ± 0.06 | 87.12 ± 1.30 | 85.12 ± 0.63 |
+
+*Paired per-seed differences (DAPT minus direct, same NER seed), strict F1.*
+
+| comparison | split | seed 1 | seed 2 | seed 3 | mean ± std | seeds Δ > 0 | ΔP mean | ΔR mean |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| +DAPT 1 epoch | dev | -0.20 | -1.86 | -0.97 | -1.01 ± 0.83 | 0/3 | -1.54 | -0.42 |
+| +DAPT 1 epoch | test | +0.10 | -0.78 | +0.02 | -0.22 ± 0.49 | 2/3 | -0.69 | +0.28 |
+| +DAPT 3 epochs | dev | -0.48 | -1.50 | -0.64 | -0.87 ± 0.55 | 0/3 | -1.47 | -0.21 |
+| +DAPT 3 epochs | test | -0.36 | -0.09 | -0.48 | -0.31 ± 0.20 | 0/3 | -1.04 | +0.49 |
+
+![Test strict F1 per seed](dapt/figs/ner_f1_paired.png)
+
+![Test strict precision and recall per seed](dapt/figs/ner_pr_paired.png)
+
+*Zero-step control.* `ner.dapt --max_steps 0` saved a model whose encoder equals bert-base-cased
+(hash check: 0 of 197 encoder tensors differ, max abs difference 0). Fine-tuned with seed 1
+(`runs/v2_control/bert+dapt0/seed1`), it gives test strict F1 85.77 against 85.89 for the direct run
+with the same seed, and 8 of the 940 test sentences get different predictions. The weights are the
+same, so the run-to-run difference comes from non-deterministic kernels on MPS; a full MPS run is not
+bit-for-bit reproducible.
+
+*Repeat run.* The direct run with seed 1 was repeated unchanged (`runs/v2_control/bert_rerun/seed1`).
+Test strict F1 per fine-tuning epoch, direct / zero-step control / repeat: epoch 1 83.00 / 83.18 / 83.14,
+epoch 2 84.94 / 84.79 / 84.80, epoch 3 85.89 / 85.77 / 85.96. At a fixed epoch the three runs agree within
+about 0.2 F1. The dev strict F1 of epochs 2 and 3 differs by about 0.1 in each run (84.57 vs 84.63,
+84.40 vs 84.51, 84.62 vs 84.51), and in the repeat run the selection flips to epoch 2, so its reported
+(dev-selected) test F1 is 84.80 instead of 85.89, with 91 of 940 test sentences predicted differently.
+One configuration and one seed can therefore move the dev-selected test F1 by about 1 point on MPS.
+These are three runs of one seed, not an estimate of the spread.
+
+*Conclusion.* DAPT lowers the masked-LM loss clearly, but it does not improve NER: the mean paired test
+strict F1 difference is -0.22 ± 0.49 (1 epoch) and -0.31 ± 0.20 (3 epochs) at the dev-selected epoch and
+-0.33 ± 0.54 / -0.42 ± 0.36 at the fixed last epoch. All of these are within the spread over seeds and
+below the repeat-run noise above, so no difference in either direction is claimed. Precision is lower in
+all 12 paired comparisons at the dev-selected epoch (dev and test, both DAPT lengths, three seeds). For
+3-epoch DAPT the drop is also present at matched fine-tuning epochs 2 and 3 on test (all 6 pairs, -0.74
+to -1.46, mean about -1.0), which is larger than the 0.1-0.3 by which test precision differs between
+the three seed-1 runs of one configuration at a fixed epoch, and the error analysis shows 40 more false
+positives against 14 more true positives. For 1-epoch DAPT the matched-epoch differences are mixed
+(13 of 18 pairs negative), and after fine-tuning epoch 1 DAPT is ahead on test in both arms. With one
+DAPT seed and three NER seeds this is suggestive of a small precision loss, not an established effect.
+Recall rises slightly on test
+and is unchanged or slightly lower on dev, so the result is not a precision-for-recall trade.
+`dapt/results/error_analysis_dapt*.md`
+breaks the test errors down by type and lists the entities that change consistently across seeds.
+
+*Limitations.* DAPT was run once (seed 42) per length, so DAPT-seed variance is not measured. Everything
+ran on Apple MPS only; the Colab/CUDA path and fp16 were not verified with these runs. The corpus is
+small (about 5.9 million words) compared with the PubMed pre-training of BioBERT or PubMedBERT.
 
 ## Results
 

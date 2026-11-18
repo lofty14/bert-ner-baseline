@@ -1,0 +1,87 @@
+{
+  "base_model": "bert",
+  "checkpoint": "google-bert/bert-base-cased",
+  "revision": "cd5ef92a9fb2f889e972770a36d4ed042daf221e",
+  "corpus": {
+    "dir": "data/dapt",
+    "sha256": {
+      "corpus_train.txt": "424e63d1650f0657aa6601f53979e665002736bcb6cab671f4516b409832dcfb",
+      "corpus_valid.txt": "e063dfaacd88f17f30ac074936276d729501d4b791ae95494639e65dbb9ae6b6"
+    },
+    "limit_docs": null,
+    "documents": {
+      "train": 29257,
+      "valid": 626
+    },
+    "windows": {
+      "train": 52216,
+      "valid": 1122
+    },
+    "train_tokens": 9767545
+  },
+  "config": {
+    "model": "bert",
+    "corpus_dir": "data/dapt",
+    "output_dir": "runs_dapt/bert_dapt0",
+    "max_steps": 0,
+    "epochs": 1.0,
+    "batch_size": 32,
+    "grad_accum": 1,
+    "eval_batch_size": null,
+    "lr": 5e-05,
+    "warmup_ratio": 0.06,
+    "weight_decay": 0.01,
+    "max_length": 256,
+    "mlm_probability": 0.15,
+    "precision": "fp32",
+    "seed": 42,
+    "eval_steps": 500,
+    "logging_steps": 50,
+    "limit_docs": null,
+    "warmup_steps": 0,
+    "steps_per_epoch": 1632,
+    "total_steps": 0
+  },
+  "training_args": null,
+  "steps": 0,
+  "train_loss": null,
+  "train_loss_history": [],
+  "valid_loss_history": [
+    {
+      "step": 0,
+      "loss": 1.9252265691757202
+    }
+  ],
+  "valid_loss": {
+    "initial": 1.9252265691757202,
+    "final": 1.9252265691757202
+  },
+  "valid_perplexity": {
+    "initial": 6.85670200724484,
+    "final": 6.85670200724484
+  },
+  "encoder_sha256": "963a5823bad227c274d31d4deb86f0ee4cd1f7a90a9bad297a7adb6d0c444f63",
+  "encoder_tensors": 197,
+  "save_reload_check": {
+    "tensors": 204,
+    "identical": true
+  },
+  "device": {
+    "device": "mps",
+    "name": "arm64"
+  },
+  "versions": {
+    "python": "3.12.14",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "torch": "2.13.0",
+    "transformers": "5.22.0",
+    "accelerate": "1.15.0",
+    "seqeval": "1.2.2",
+    "numpy": "2.5.3"
+  },
+  "seconds": {
+    "train": 0.0,
+    "total": 17.2,
+    "per_step": null
+  }
+}

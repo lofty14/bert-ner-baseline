@@ -8,6 +8,12 @@ Model selection uses the dev set (best dev entity F1 across epochs; strict IOB2 
 on dev and test. The test set is also scored after every epoch (test_history in metrics.json),
 for reporting a fixed last-epoch protocol only; it never influences selection.
 Training runs in FP32 unless --precision bf16/fp16 is given.
+
+    python -m ner.train --model bert --seed 1 --init_from runs_dapt/bert_dapt/model   # -> runs/bert+dapt/seed1
+
+--init_from starts from a continued-pre-training checkpoint written by ner.dapt (the tokenizer is
+still the checked one of --model); the encoder is verified against that checkpoint and against
+the Hugging Face original (see verify_init) and the run is labelled <model>+dapt (--label).
 """
 
 import argparse
@@ -27,7 +33,7 @@ import transformers
 from seqeval.metrics import accuracy_score, f1_score, precision_score, recall_score
 from seqeval.scheme import IOB2
 from transformers import (
-    AutoModelForTokenClassification, DataCollatorForTokenClassification, EarlyStoppingCallback,
+    AutoModelForMaskedLM, AutoModelForTokenClassification, DataCollatorForTokenClassification, EarlyStoppingCallback,
     Trainer, TrainerCallback, TrainingArguments, set_seed,
 )
 
@@ -210,6 +216,67 @@ def versions():
     }
 
 
+def verify_init(model, init_dir, spec, loading_info):
+    """Fatal checks for --init_from; returns a summary for metrics.json.
+
+    * only the new classifier head may be missing and only MLM-head (cls.*) keys unexpected;
+    * every encoder tensor equals AutoModelForMaskedLM.from_pretrained(init_dir) and the encoder
+      hash recorded by ner.dapt (identical key sets, nothing silently skipped);
+    * vs. the Hugging Face checkpoint: must differ if ner.dapt trained > 0 steps, be identical if 0.
+    """
+    from .dapt import compare_states, encoder_state, state_hash
+
+    init_dir = Path(init_dir)
+    report_path = init_dir.parent / "dapt.json"
+    if not report_path.exists():
+        raise SystemExit(f"--init_from {init_dir}: {report_path} not found (expected ner.dapt output)")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if (report["checkpoint"], report["revision"]) != (spec["checkpoint"], spec["revision"]):
+        raise RuntimeError(f"{report_path} starts from {report['checkpoint']}@{report['revision']}, "
+                           f"not {spec['checkpoint']}@{spec['revision']}")
+    bad_missing = [k for k in loading_info["missing_keys"] if not k.startswith("classifier.")]
+    bad_unexpected = [k for k in loading_info["unexpected_keys"] if not k.startswith("cls.")]
+    if bad_missing or bad_unexpected or loading_info["mismatched_keys"] or loading_info["error_msgs"]:
+        raise RuntimeError(f"loading {init_dir}: missing {bad_missing[:5]}, unexpected {bad_unexpected[:5]}, "
+                           f"mismatched {loading_info['mismatched_keys'][:5]}, errors {loading_info['error_msgs'][:3]}")
+
+    ours = {k: v.detach().to("cpu") for k, v in model.state_dict().items() if not k.startswith("classifier.")}
+    mlm = encoder_state(AutoModelForMaskedLM.from_pretrained(str(init_dir)))
+    only_ours, only_mlm, diff, max_abs = compare_states(ours, mlm)
+    if only_ours or only_mlm or diff:
+        raise RuntimeError(f"encoder != {init_dir}: keys only in classifier model {only_ours[:5]}, "
+                           f"only in MLM model {only_mlm[:5]}, differing {diff[:5]} (max abs {max_abs:.3g})")
+    digest = state_hash(ours)
+    if digest != report["encoder_sha256"]:
+        raise RuntimeError(f"encoder hash {digest[:12]} != dapt.json encoder_sha256 {report['encoder_sha256'][:12]}")
+
+    hub = encoder_state(AutoModelForMaskedLM.from_pretrained(spec["checkpoint"], revision=spec["revision"]))
+    only_ours, only_hub, hub_diff, hub_max_abs = compare_states(ours, hub)
+    if only_ours or only_hub:
+        raise RuntimeError(f"encoder keys differ from {spec['checkpoint']}: {only_ours[:5]} / {only_hub[:5]}")
+    steps = report["steps"]
+    if steps > 0 and not hub_diff:
+        raise RuntimeError(f"dapt.json reports {steps} steps but the encoder equals the original checkpoint")
+    if steps == 0 and hub_diff:
+        raise RuntimeError(f"dapt.json reports 0 steps but {len(hub_diff)} tensors differ from the original")
+    check = {"encoder_tensors": len(ours), "identical_to_init_dir": True, "encoder_sha256": digest,
+             "tensors_differing_from_original": len(hub_diff), "max_abs_diff_from_original": hub_max_abs}
+    print(f"  --init_from check OK: {len(ours)} encoder tensors identical to {init_dir} (hash {digest[:12]}); "
+          f"{len(hub_diff)}/{len(ours)} differ from the original checkpoint (max abs {hub_max_abs:.3g}), "
+          f"dapt steps {steps}")
+    return {
+        "path": str(init_dir),
+        "dapt_json": str(report_path),
+        "corpus_sha256": report["corpus"]["sha256"],
+        "corpus_documents": report["corpus"]["documents"],
+        "steps": steps,
+        "valid_loss": report["valid_loss"],
+        "config": {k: report["config"][k] for k in ("lr", "batch_size", "grad_accum", "max_length",
+                                                    "mlm_probability", "precision", "seed", "limit_docs")},
+        "check": check,
+    }
+
+
 def write_predictions(path, rows, preds):
     with open(path, "w", encoding="utf-8") as f:
         for i, ((tokens, gold), pred) in enumerate(zip(rows, preds)):
@@ -241,18 +308,24 @@ def parse_args(argv=None):
     p.add_argument("--no_test_history", action="store_true",
                    help="skip the per-epoch test evaluation (test_history); for checking it does not affect training")
     p.add_argument("--data_dir", default=str(DEFAULT_DATA_DIR))
-    p.add_argument("--output_dir", default=None, help="default: runs/<model>/seed<seed>")
+    p.add_argument("--init_from", default=None,
+                   help="start from a ner.dapt checkpoint (<dapt output>/model) instead of the hub weights")
+    p.add_argument("--label", default=None,
+                   help="run name in metrics.json / runs/<label>/; default: --model, or <model>+dapt with --init_from")
+    p.add_argument("--output_dir", default=None, help="default: runs/<label>/seed<seed>")
     return p.parse_args(argv)
 
 
 def main(argv=None):
     args = parse_args(argv)
     spec = MODELS[args.model]
-    out_dir = Path(args.output_dir or REPO_ROOT / "runs" / args.model / f"seed{args.seed}")
+    args.label = args.label or (f"{args.model}+dapt" if args.init_from else args.model)
+    out_dir = Path(args.output_dir or REPO_ROOT / "runs" / args.label / f"seed{args.seed}")
     out_dir.mkdir(parents=True, exist_ok=True)
     dev_info = device_info()
     check_precision(args.precision, dev_info)
-    print(f"== {args.model} ({spec['checkpoint']}@{spec['revision'][:8]}) seed={args.seed} "
+    print(f"== {args.label} ({spec['checkpoint']}@{spec['revision'][:8]}"
+          f"{', init_from ' + args.init_from if args.init_from else ''}) seed={args.seed} "
           f"device={dev_info} precision={args.precision} select={args.select_metric} -> {out_dir}")
     started = time.time()
     set_seed(args.seed)
@@ -266,10 +339,20 @@ def main(argv=None):
     tokenizer = load_tokenizer(args.model)
     encoded = {split: encode(r, tokenizer, args.max_length, split) for split, r in rows.items()}
 
-    model = AutoModelForTokenClassification.from_pretrained(
-        spec["checkpoint"], revision=spec["revision"], num_labels=len(LABELS),
-        label2id=LABEL2ID, id2label=ID2LABEL,
-    )
+    init_summary = None
+    if args.init_from:
+        model, loading_info = AutoModelForTokenClassification.from_pretrained(
+            args.init_from, num_labels=len(LABELS), label2id=LABEL2ID, id2label=ID2LABEL,
+            output_loading_info=True,
+        )
+        rng = RNGState()  # the verification loads must not shift the training RNG stream
+        init_summary = verify_init(model, args.init_from, spec, loading_info)
+        rng.restore()
+    else:
+        model = AutoModelForTokenClassification.from_pretrained(
+            spec["checkpoint"], revision=spec["revision"], num_labels=len(LABELS),
+            label2id=LABEL2ID, id2label=ID2LABEL,
+        )
 
     # warmup_ratio was removed in transformers 5; compute integer warmup steps ourselves.
     steps_per_epoch = math.ceil(len(encoded["train"]) / args.batch_size)
@@ -376,7 +459,9 @@ def main(argv=None):
         shutil.rmtree(out_dir / "checkpoints", ignore_errors=True)
 
     metrics = {
-        "model": args.model,
+        "model": args.label,
+        "base_model": args.model,
+        "init_from": init_summary,
         "checkpoint": spec["checkpoint"],
         "revision": spec["revision"],
         "seed": args.seed,
@@ -413,7 +498,7 @@ def main(argv=None):
     }
     (out_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     t = results["test"]
-    print(f"== done {args.model} seed={args.seed}: best epoch {best['epoch']} by {args.select_metric}, "
+    print(f"== done {args.label} seed={args.seed}: best epoch {best['epoch']} by {args.select_metric}, "
           f"dev F1 {results['dev']['default']['f1']:.4f}, test F1 {t['default']['f1']:.4f} "
           f"(strict {t['strict']['f1']:.4f}), {metrics['seconds']['total']}s -> {out_dir / 'metrics.json'}")
     return metrics

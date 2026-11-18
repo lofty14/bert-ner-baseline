@@ -47,7 +47,9 @@ def seeds_cell(runs):
 
 
 def model_key(k):
-    return ORDER.index(k[0]) if k[0] in ORDER else 99, k[0], k[1]
+    """Known models first in ORDER; variants such as bert+dapt directly after their base model."""
+    base, plus, _ = k[0].partition("+")
+    return ORDER.index(base) if base in ORDER else 99, base, bool(plus), k[0], k[1]
 
 
 def label(key):
@@ -98,15 +100,23 @@ def aggregate(runs_dir):
         by_protocol[protocol(m)][(m["model"], m["data"]["limited"])].append(m)
     if not by_protocol:
         return f"No metrics.json found under {runs_dir}"
+    mixed = []
     for groups in by_protocol.values():
-        for runs in groups.values():
+        for key, runs in groups.items():
             runs.sort(key=lambda r: r["seed"])
+            inits = {json.dumps([(r.get("init_from") or {}).get("corpus_sha256"),
+                                 (r.get("init_from") or {}).get("steps")]) for r in runs}
+            if len(inits) > 1:
+                mixed.append(label(key))
 
     lines = ["Scores are percentages, mean ± sample std over seeds. "
              "`default` = seqeval default mode, `strict` = mode='strict', scheme=IOB2.", ""]
     if len(by_protocol) > 1:
         lines += [f"**WARNING: {runs_dir} mixes {len(by_protocol)} protocols (precision / selection metric); "
                   "they are reported separately below and must not be pooled.**", ""]
+    if mixed:
+        lines += [f"**WARNING: runs labelled {', '.join(mixed)} start from different --init_from checkpoints "
+                  "(corpus / steps); give them distinct --label values.**", ""]
     for precision, select in sorted(by_protocol):
         lines += [f"### precision: {precision}; dev selection metric: {select}", ""]
         lines += protocol_section(by_protocol[(precision, select)])
