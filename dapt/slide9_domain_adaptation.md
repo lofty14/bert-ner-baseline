@@ -1,73 +1,146 @@
-# Slide 9 — Methods | Domain Adaptation
+# Slides 9–12 — Domain Adaptation
 
 （给自己看的说明用中文；要贴进幻灯片和要念的部分是英文。数字出处：`runs/v2/results.md`、
 `runs/v2/compare_dapt*.md`、`runs/v2/error_analysis_dapt*.md`、`data/dapt/audit.json`、`runs_dapt/*/dapt.json`。）
 
-## 1. 幻灯片上的字（英文，直接贴）
+## 1. 幻灯片上的字（英文，直接贴；共 4 页，第 4 页可整页删掉）
 
-**Title:** Methods | Domain Adaptation
+### Slide 9 — Method(s)
 
-**Left column — the method**
+**Title:** Method(s)
 
-- Domain-adaptive pre-training (DAPT), Gururangan et al., ACL 2020:
-  continue the masked-language-model objective on unlabelled in-domain text, then fine-tune as usual.
-- Starting model: `bert-base-cased` (general-domain; BioBERT and PubMedBERT have already seen PubMed).
+**Subtitle:** Domain adaptation: continue pre-training, then fine-tune
 
-Diagram (two rows of boxes, same start and same end):
+Diagram (two rows of boxes, same start and same end; the yellow box is the only difference):
 
 ```
-A  Direct:  bert-base-cased ───────────────────────────────► fine-tune on NCBI Disease ► NER
-B  DAPT:    bert-base-cased ► continue MLM on 29k PubMed ──► fine-tune on NCBI Disease ► NER
+A  Direct:  bert-base-cased ─────────────────────────────────► Fine-tune on NCBI Disease ► Disease NER
+B  DAPT:    bert-base-cased ► Continue masked-LM on 29k PubMed ► Fine-tune on NCBI Disease ► Disease NER
                               abstracts (1 or 3 epochs)
 ```
 
-**Right column — the controlled comparison**
+- Domain-adaptive pre-training (DAPT), Gururangan et al., ACL 2020
+- Start from general-domain BERT: BioBERT and PubMedBERT have already seen PubMed
 
 | | |
 |---|---|
 | Changed | Encoder weights at the start of fine-tuning (nothing else) |
-| Kept the same | Starting checkpoint and vocabulary · NER train/dev/test split · fine-tuning settings · seeds 1, 2, 3 · epoch chosen on dev strict F1 · strict entity-level P/R/F1 |
-| Extra text | 29,257 PubMed abstracts (disease MeSH category, 1990–2012), about 5.9M words |
-| Leak check | All 792 NCBI Disease abstracts excluded by PMID (2 found, both from train) · 1,771 dev/test sentences (all with ≥ 40 characters) searched in the corpus: 0 hits |
+| Kept the same | Starting checkpoint and vocabulary · NER train/dev/test split · fine-tuning settings · seeds 1, 2, 3 · epoch chosen on dev · strict entity-level P/R/F1 |
 
-**Bottom strip — where we are (experiment finished)**
+（这一页不出现任何结果数字。）
 
-- MLM adapted: validation perplexity 6.86 → 3.70 (1 epoch) → 3.35 (3 epochs)
-- NER did not improve: test strict F1 85.43 ± 0.51 → 85.21 ± 0.68 → 85.12 ± 0.63 (3 seeds)
-- Figure: `dapt/figs/ner_f1_paired.png` (or `dapt/figs/mlm_valid_loss.png` if there is room for only one, put the F1 one on the results slide)
+### Slide 10 — Method(s)
 
-**Footnote (small):** BERT baseline here is the mean of 3 seeds under our v2 protocol (FP32, epoch selected on dev);
-it is not the single-seed number on the results slide.
+**Title:** Method(s)
+
+**Subtitle:** Domain adaptation: extra text and leak check
+
+Left — table:
+
+| | |
+|---|---|
+| Source | PubMed abstracts via NCBI E-utilities: diseases category (MeSH), English, with abstract |
+| Sampling | 1990–2012, the same number per year, fixed random seed; PMID list is in the repository |
+| Size | 29,257 abstracts, about 5.9M words (9.8M tokens) |
+| Leak check 1 | All 792 NCBI Disease abstracts excluded by PMID: 2 found, both from the training set |
+| Leak check 2 | 1,771 distinct dev/test sentences (all with ≥ 40 characters) searched in the corpus: 0 hits |
+
+Small note under the table: 91 dev/test sentences are shorter than 40 characters and were not searched; the PMID check still covers them.
+
+Right — figure `dapt/figs/mlm_valid_loss.png`, caption:
+The language model did adapt. Masked-LM perplexity on held-out PubMed text: 6.86 (BERT) → 3.70 (DAPT 1 epoch) → 3.35 (DAPT 3 epochs)
+
+### Slide 11 — Results
+
+**Title:** Results
+
+**Subtitle:** Domain adaptation: before vs after
+
+Left — figure `dapt/figs/ner_f1_paired.png`. Right — table:
+
+| Model | Precision | Recall | F1 |
+|---|---:|---:|---:|
+| BERT, direct fine-tuning | 84.26 ± 0.32 | 86.63 ± 0.87 | 85.43 ± 0.51 |
+| BERT + DAPT 1 epoch | 83.58 ± 0.82 | 86.91 ± 0.64 | 85.21 ± 0.68 |
+| BERT + DAPT 3 epochs | 83.22 ± 0.06 | 87.12 ± 1.30 | 85.12 ± 0.63 |
+
+Under the table: Test set, strict entity-level, mean ± std over 3 seeds (%). Paired ΔF1 vs direct: −0.22 ± 0.49 (1 epoch), −0.31 ± 0.20 (3 epochs)
+
+- No improvement: the differences are smaller than the spread between seeds (0.5–0.7) and than the change from re-running one configuration (about 1 point).
+- Precision: suggestive of a small precision loss. Recall: slightly higher on test, not on dev.
+
+**Footnote (small):** BERT baseline here is the mean of 3 seeds under our protocol (FP32, epoch selected on dev); it is not the single-seed number on the main results slide.
+
+### Slide 12 — Discussion（可整页删除）
+
+**Title:** Discussion
+
+**Subtitle:** Domain adaptation: why it did not help
+
+Left — **What changed in the predictions**
+
+Test set, 3 seeds summed, direct → DAPT 3 epochs
+
+| | | |
+|---|---|---|
+| True positives | 2495 → 2509 | +14 |
+| False positives | 466 → 506 | +40 |
+| False negatives | 385 → 371 | −14 |
+
+- New false positive: the gene name APC tagged as a disease ("... amino acid changes in **APC** associated with both FAP and non-FAP colorectal cancer patients")
+- Fixed boundary: "very-long-chain acyl-coenzyme A dehydrogenase deficiency" is now found as one full span
+
+Right — **Likely reasons (hypotheses)**
+
+- Scale: 9.8M tokens and at most 4,896 steps at batch 32. Gururangan et al. used 7.55B tokens and 12.5K steps at batch 2048; BioBERT used 4.5B words of PubMed abstracts.
+- Vocabulary unchanged: DAPT keeps BERT's general-domain word pieces.
+- The 5.4k labelled training sentences may already teach most of what a little unlabelled text adds.
+
+Bottom: Limitations: one DAPT run (seed 42), 3 NER seeds, small corpus, run on Apple MPS only.
 
 导师说过：轮数、学习率这类属于「实验设置」，不要放在方法页。所以上面没有写学习率和 batch；
 被问到再说（见第 4 节）。
 
-## 2. 讲稿（英文；完整版 252 词，约 1 分 50 秒；只讲方法的短版 171 词 + 1 句，约 1 分 15 秒）
+## 2. 讲稿（英文；每页一段，与 pptx 各页备注逐字一致）
+
+按每分钟约 140 词估算：第 1 页（Slide 9）117 词，约 50 秒；第 2 页（Slide 10）72 词，约 31 秒；第 3 页（Slide 11）40 词，约 17 秒；第 4 页（Slide 12）105 词，约 45 秒。4 页合计 334 词，约 2 分 23 秒。
+
+只讲 3 页时：删掉第 4 页（Slide 12），并在第 3 页备注末尾加一句：So for this task, a small amount of adaptation does not reproduce the benefit of a model pre-trained on all of PubMed.（22 词）。这样 3 页合计 251 词，约 1 分 48 秒。
+
+### Slide 9
 
 > Our fourth experiment asks a simple question: BioBERT and PubMedBERT are better than BERT because they were
 > pre-trained on biomedical text. Can we get part of that benefit cheaply, by adapting plain BERT ourselves?
 >
 > The method is domain-adaptive pre-training, from Gururangan and colleagues, 2020. We take bert-base-cased and keep
-> training it with the same masked-word objective it was pre-trained with, but on unlabelled PubMed abstracts.
-> Then we fine-tune it for disease NER exactly as before.
+> training it with the same masked-word objective it was pre-trained with, but on unlabelled PubMed abstracts. Then
+> we fine-tune it for disease NER exactly as before.
 >
 > It is a controlled comparison with two arms. The only thing that differs is the encoder weights we start
 > fine-tuning from. The starting checkpoint, the vocabulary, the data split, the fine-tuning settings, the three
 > random seeds and the evaluation are all identical.
->
+
+### Slide 10
+
 > The extra text is about twenty-nine thousand PubMed abstracts on diseases. Before training we checked for leakage
 > in two ways: we removed every abstract that is part of NCBI Disease by its PubMed ID, and we searched the corpus
 > for the validation and test sentences themselves. Neither check found any validation or test text in the corpus.
 >
-> The experiment is finished. The adaptation itself worked: masked-word perplexity on held-out PubMed text dropped
-> from 6.9 to 3.4. But NER did not improve. Test F1 went from 85.4 to 85.2 and 85.1, which is inside the variation
-> between seeds, and smaller than what we see when we simply re-run the same configuration. If anything, precision
-> is slightly lower. So for this task, a small amount of
-> adaptation does not reproduce the benefit of a model pre-trained on all of PubMed.
+> The adaptation itself worked: masked-word perplexity on held-out PubMed text dropped from 6.9 to 3.4.
 
-如果这页只让讲方法、结果留给结果页的同学讲，就念到 "Neither check found any validation or test text in the corpus." 为止，
-最后一段换成一句：
-> The experiment is finished, and the result is on the results slide: the language model adapted, but NER did not improve.
+### Slide 11
+
+> But NER did not improve. Test F1 went from 85.4 to 85.2 and 85.1, which is inside the variation between seeds, and
+> smaller than what we see when we simply re-run the same configuration. If anything, precision is slightly lower.
+
+### Slide 12
+
+> Why did it not help? Looking at the errors, the adapted model finds a few more true entities but adds more false
+> positives; for example, it tags the gene name APC as a disease. We think the main reason is scale: our corpus is
+> about ten million tokens, while the original paper used seven and a half billion, and BioBERT was trained on four
+> and a half billion words. The vocabulary also stays general-domain. These are hypotheses, and we only ran one
+> adaptation. So for this task, a small amount of adaptation does not reproduce the benefit of a model pre-trained on
+> all of PubMed.
 
 ## 3. 结果（给结果页 / 讨论页的同学，或自己被问到时用）
 
