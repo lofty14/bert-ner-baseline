@@ -3,6 +3,7 @@
     python -m ner.plot_dapt [--runs_dir runs/v2] [--dapt_dir runs_dapt] [--out_dir dapt/figs]
 
 mlm_valid_loss.png  validation masked-LM loss vs. step for the 1- and 3-epoch DAPT runs (dapt.json)
+mlm_valid_loss_slide.png  the same without batch size / step counts in the labels (for the methods slide)
 ner_f1_paired.png   test strict F1 per seed, lines join the same seed, mean ± 1 sample std
 ner_pr_paired.png   the same for test strict precision and recall (two panels, same y span)
 
@@ -93,7 +94,7 @@ def plot_pr(scores, seeds, out):
     plt.close(fig)
 
 
-def plot_mlm(dapt_dir, out):
+def plot_mlm(dapt_dir, out, slide=False):
     fig, ax = plt.subplots(figsize=(9, 5.5))
     ppl_initial = None
     for name, label, color, offset, ha in DAPT_RUNS:
@@ -103,7 +104,8 @@ def plot_mlm(dapt_dir, out):
         ppl = d["valid_perplexity"]
         ppl_initial = ppl["initial"]
         ax.plot(steps, losses, "-o", color=color, lw=2, ms=5,
-                label=f"{label} ({d['steps']:,} steps): final PPL {ppl['final']:.2f}")
+                label=(f"{label}: final PPL {ppl['final']:.2f}" if slide else
+                       f"{label} ({d['steps']:,} steps): final PPL {ppl['final']:.2f}"))
         ax.annotate(f"PPL {ppl['final']:.2f}", (steps[-1], losses[-1]), xytext=offset,
                     textcoords="offset points", color=color, fontsize=12, va="center", ha=ha)
     ax.annotate(f"start: loss {math.log(ppl_initial):.3f}, PPL {ppl_initial:.2f}", (0, math.log(ppl_initial)),
@@ -113,7 +115,8 @@ def plot_mlm(dapt_dir, out):
     ticks = [p for p in (3.0, 3.5, 4.0, 5.0, 6.0, 7.0) if lo <= math.log(p) <= hi]
     sec.set_yticks([math.log(p) for p in ticks], [f"{p:g}" for p in ticks])
     sec.set_ylabel("Perplexity, exp(loss)")
-    ax.set_xlabel("Continued pre-training step (batch 32 x 256 tokens)")
+    ax.set_xlabel("Continued pre-training step" if slide else
+                  "Continued pre-training step (batch 32 x 256 tokens)")
     ax.set_ylabel("Validation masked-LM loss")
     ax.set_title("DAPT on PubMed abstracts: validation MLM loss")
     ax.set_xlim(right=ax.get_xlim()[1] * 1.04)
@@ -138,9 +141,10 @@ def main(argv=None):
         f1 = [scores[lab][s]["f1"] for s in seeds]
         print(f"{lab}: test strict F1 {statistics.mean(f1):.2f} ± {statistics.stdev(f1):.2f}")
     plot_mlm(args.dapt_dir, out / "mlm_valid_loss.png")
+    plot_mlm(args.dapt_dir, out / "mlm_valid_loss_slide.png", slide=True)
     plot_f1(scores, seeds, out / "ner_f1_paired.png")
     plot_pr(scores, seeds, out / "ner_pr_paired.png")
-    print(f"wrote {out}/mlm_valid_loss.png, ner_f1_paired.png, ner_pr_paired.png")
+    print(f"wrote {out}/mlm_valid_loss.png, mlm_valid_loss_slide.png, ner_f1_paired.png, ner_pr_paired.png")
 
 
 if __name__ == "__main__":
