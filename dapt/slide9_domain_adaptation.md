@@ -65,7 +65,7 @@ it is not the single-seed number on the results slide.
 > is slightly lower. So for this task, a small amount of
 > adaptation does not reproduce the benefit of a model pre-trained on all of PubMed.
 
-如果这页只让讲方法、结果留给结果页的同学讲，就念到 "No validation or test text is in the corpus." 为止，
+如果这页只让讲方法、结果留给结果页的同学讲，就念到 "Neither check found any validation or test text in the corpus." 为止，
 最后一段换成一句：
 > The experiment is finished, and the result is on the results slide: the language model adapted, but NER did not improve.
 
