@@ -1,0 +1,52 @@
+{
+  "query": "diseases category[MeSH Terms] AND hasabstract[text] AND english[Language] AND {date}[pdat]",
+  "pmid_file": "dapt/pmids.txt",
+  "pmid_file_sha256": "1ea6b885ec1ec9267c8fabd2768ce4113f0cfcb649c63bf7ccf0095e2728e545",
+  "requested": 30000,
+  "retrieved": 30000,
+  "dropped_missing": 0,
+  "dropped_no_abstract": 115,
+  "pass1_pmid_overlap": {
+    "ncbi_documents": {
+      "train": 592,
+      "validation": 100,
+      "test": 100
+    },
+    "removed": {
+      "train": 2,
+      "validation": 0,
+      "test": 0
+    },
+    "removed_total": 2,
+    "removed_pmids": {
+      "train": [
+        "2253938",
+        "7579347"
+      ],
+      "validation": [],
+      "test": []
+    }
+  },
+  "pass2_text_overlap": {
+    "fingerprints": 1771,
+    "min_chars": 40,
+    "dev_test_sentences_too_short": 91,
+    "removed_documents": 0,
+    "sentences_involved": 0,
+    "removed_pmids": {}
+  },
+  "final_documents": {
+    "train": 29257,
+    "valid": 626
+  },
+  "words_approx": {
+    "train": 5903866,
+    "valid": 125525
+  },
+  "valid_rule": "int(sha256('dapt-valid:<pmid>')[:8], 16) % 1000 < 20",
+  "sha256": {
+    "corpus_train.txt": "424e63d1650f0657aa6601f53979e665002736bcb6cab671f4516b409832dcfb",
+    "corpus_valid.txt": "e063dfaacd88f17f30ac074936276d729501d4b791ae95494639e65dbb9ae6b6"
+  },
+  "built": "2026-11-17T14:15:55+00:00"
+}

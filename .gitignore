@@ -12,3 +12,4 @@ ner_baseline_runs/
 checkpoint-*/
 *.safetensors
 *.bin
+runs_dapt/

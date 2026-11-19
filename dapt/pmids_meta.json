@@ -1,0 +1,129 @@
+{
+  "query": "diseases category[MeSH Terms] AND hasabstract[text] AND english[Language] AND {date}[pdat]",
+  "years": [
+    1990,
+    2012
+  ],
+  "total": 30000,
+  "per_year": {
+    "1990": {
+      "available": 116806,
+      "pool": 99926,
+      "taken": 1305
+    },
+    "1991": {
+      "available": 121913,
+      "pool": 104269,
+      "taken": 1305
+    },
+    "1992": {
+      "available": 127418,
+      "pool": 109207,
+      "taken": 1305
+    },
+    "1993": {
+      "available": 131996,
+      "pool": 115247,
+      "taken": 1305
+    },
+    "1994": {
+      "available": 136023,
+      "pool": 118356,
+      "taken": 1305
+    },
+    "1995": {
+      "available": 142710,
+      "pool": 119221,
+      "taken": 1305
+    },
+    "1996": {
+      "available": 147446,
+      "pool": 119988,
+      "taken": 1305
+    },
+    "1997": {
+      "available": 153010,
+      "pool": 119988,
+      "taken": 1305
+    },
+    "1998": {
+      "available": 161200,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "1999": {
+      "available": 167740,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2000": {
+      "available": 178815,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2001": {
+      "available": 189209,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2002": {
+      "available": 203013,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2003": {
+      "available": 223987,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2004": {
+      "available": 243493,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2005": {
+      "available": 281049,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2006": {
+      "available": 325551,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2007": {
+      "available": 360889,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2008": {
+      "available": 393141,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2009": {
+      "available": 417030,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2010": {
+      "available": 452853,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2011": {
+      "available": 509817,
+      "pool": 119988,
+      "taken": 1304
+    },
+    "2012": {
+      "available": 541553,
+      "pool": 119988,
+      "taken": 1304
+    }
+  },
+  "sampling": "per month: up to 9999 PMIDs in esearch default order, quota drawn with random.Random(f'{seed}-{year}-{month}')",
+  "shuffle_seed": 9444,
+  "created": "2026-11-17T13:53:51+00:00",
+  "sha256": "1ea6b885ec1ec9267c8fabd2768ce4113f0cfcb649c63bf7ccf0095e2728e545"
+}
