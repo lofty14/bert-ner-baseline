@@ -12,6 +12,7 @@ import argparse
 import copy
 import json
 import re
+import uuid
 from pathlib import Path
 
 import nbformat
@@ -75,6 +76,8 @@ def main():
         shift = 3 - min_heading(nb.cells)
         cells.extend(shift_headings(c, shift) for c in nb.cells)
 
+    for c in cells:  # parts may share cell ids; give every merged cell a fresh one
+        c["id"] = uuid.uuid4().hex[:8]
     out = nbformat.v4.new_notebook()
     out.cells = cells
     out.metadata = {"kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"},
