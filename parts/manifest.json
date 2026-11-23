@@ -4,7 +4,7 @@
   "parts": [
     {"file": "1_intro_data_eda.ipynb", "title": "Introduction, data sources and exploratory analysis", "owner": "Yuchen Li"},
     {"file": "2_methods_protocol.ipynb", "title": "Models, methods and the unified fine-tuning protocol", "owner": "Alex Shen"},
-    {"file": "3_bert_baseline.ipynb", "title": "BERT baseline", "owner": "TBD"},
+    {"file": "3_bert_baseline.ipynb", "title": "BERT baseline", "owner": "Bai Li"},
     {"file": "4_biobert.ipynb", "title": "BioBERT", "owner": "Bai Li"},
     {"file": "5_pubmedbert.ipynb", "title": "PubMedBERT", "owner": "Yuanquan Jin"},
     {"file": "6_dapt.ipynb", "title": "Domain-adaptive pre-training (DAPT)", "owner": "Chongli Chen"},
